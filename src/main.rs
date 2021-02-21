@@ -1,6 +1,6 @@
 use ggez::input::keyboard::{self, KeyCode};
 use ggez::{self, event, graphics, nalgebra as na, Context, ContextBuilder, GameResult};
-use graphics::{DrawParam, Drawable};
+use graphics::{DrawParam, Drawable, Mesh};
 
 use rand::{thread_rng, Rng};
 
@@ -11,7 +11,9 @@ const RACKET_WIDTH_HALF: f32 = RACKET_WIDTH * 0.5;
 const BALL_SIZE: f32 = 30.0;
 const BALL_SIZE_HALF: f32 = BALL_SIZE * 0.5;
 const PLAYER_SPEED: f32 = 600.0;
-const BALL_SPEED: f32 = 600.0;
+const BALL_SPEED: f32 = 300.0;
+const PADDING: f32 = 40.0;
+const MIDDLE_LINE_W: f32 = 2.0;
 
 fn clamp(value: &mut f32, low: f32, high: f32) {
     if *value < low {
@@ -67,8 +69,8 @@ impl MainState {
         randomize_vec(&mut ball_vel, BALL_SPEED, BALL_SPEED);
 
         MainState {
-            player_1_pos: na::Point2::new(RACKET_WIDTH_HALF, screen_h_half),
-            player_2_pos: na::Point2::new(screen_w - RACKET_WIDTH_HALF, screen_h_half),
+            player_1_pos: na::Point2::new(RACKET_WIDTH_HALF + PADDING, screen_h_half),
+            player_2_pos: na::Point2::new(screen_w - RACKET_WIDTH_HALF - PADDING, screen_h_half),
             ball_pos: na::Point2::new(screen_w_half, screen_h_half),
             ball_vel,
             player_1_score: 0,
@@ -94,17 +96,43 @@ impl event::EventHandler for MainState {
             self.ball_pos.y = screen_h * 0.5;
 
             randomize_vec(&mut self.ball_vel, BALL_SPEED, BALL_SPEED);
-
             self.player_2_score += 1;
         }
 
-        if self.ball_pos.x > screen_h {
+        if self.ball_pos.x > screen_w {
             self.ball_pos.x = screen_w * 0.5;
             self.ball_pos.y = screen_h * 0.5;
-
             randomize_vec(&mut self.ball_vel, BALL_SPEED, BALL_SPEED);
 
             self.player_1_score += 1;
+        }
+
+        if self.ball_pos.y < BALL_SIZE_HALF {
+            self.ball_pos.y = BALL_SIZE_HALF;
+            self.ball_vel.y = self.ball_vel.y.abs();
+        } else if self.ball_pos.y > screen_h - BALL_SIZE_HALF {
+            self.ball_pos.y = screen_h - BALL_SIZE_HALF;
+            self.ball_vel.y = -self.ball_vel.y.abs();
+        }
+
+        let intersects_player_1 = self.ball_pos.x - BALL_SIZE_HALF
+            < self.player_1_pos.x + RACKET_WIDTH_HALF
+            && self.ball_pos.x + BALL_SIZE_HALF > self.player_1_pos.x - RACKET_WIDTH_HALF
+            && self.ball_pos.y - BALL_SIZE_HALF < self.player_1_pos.y + RAKCET_HEIGHT_HALF
+            && self.ball_pos.y + BALL_SIZE_HALF > self.player_1_pos.y - RAKCET_HEIGHT_HALF;
+
+        if intersects_player_1 {
+            self.ball_vel.x = self.ball_vel.x.abs();
+        }
+
+        let intersects_player_2 = self.ball_pos.x - BALL_SIZE_HALF
+            < self.player_2_pos.x + RACKET_WIDTH_HALF
+            && self.ball_pos.x + BALL_SIZE_HALF > self.player_2_pos.x - RACKET_WIDTH_HALF
+            && self.ball_pos.y - BALL_SIZE_HALF < self.player_2_pos.y + RAKCET_HEIGHT_HALF
+            && self.ball_pos.y + BALL_SIZE_HALF > self.player_2_pos.y - RAKCET_HEIGHT_HALF;
+
+        if intersects_player_2 {
+            self.ball_vel.x = -self.ball_vel.x.abs();
         }
 
         Ok(())
@@ -112,6 +140,8 @@ impl event::EventHandler for MainState {
 
     fn draw(&mut self, ctx: &mut ggez::Context) -> GameResult {
         graphics::clear(ctx, graphics::BLACK);
+        let (screen_w, screen_h) = graphics::drawable_size(ctx);
+        let (screen_w_half, _) = (screen_w * 0.5, screen_h * 0.5);
 
         let racket_rect = graphics::Rect::new(
             -RACKET_WIDTH_HALF,
@@ -136,6 +166,19 @@ impl event::EventHandler for MainState {
             graphics::WHITE,
         )?;
 
+        let middle_rect = graphics::Rect::new(MIDDLE_LINE_W * 0.5, 0.00, MIDDLE_LINE_W, screen_h);
+        let middle_mesh = graphics::Mesh::new_rectangle(
+            ctx,
+            graphics::DrawMode::fill(),
+            middle_rect,
+            graphics::WHITE,
+        )?;
+
+        let mut draw_param = graphics::DrawParam::default();
+        let screen_middle_x = screen_w * 0.5;
+        draw_param.dest = [screen_middle_x, 0.0].into();
+        graphics::draw(ctx, &middle_mesh, draw_param)?;
+
         let mut draw_param = graphics::DrawParam::default();
 
         draw_param.dest = self.player_1_pos.into();
@@ -151,10 +194,10 @@ impl event::EventHandler for MainState {
             "Player One: {}          Player Two: {}",
             self.player_1_score, self.player_2_score
         ));
-        let (screen_w, screen_h) = graphics::drawable_size(ctx);
-        let (screen_w_half, screen_h_half) = (screen_w * 0.5, screen_h * 0.5);
 
-        let score_pos = na::Point2::new(screen_w_half - 100.00, 4.00);
+        let (score_text_w, score_text_h) = score_text.dimensions(ctx);
+
+        let score_pos = na::Point2::new(score_text_w as f32 * 0.5, score_text_h as f32 * 0.5);
 
         draw_param.dest = score_pos.into();
 
